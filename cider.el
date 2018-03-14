@@ -358,16 +358,56 @@ specifying the artifact ID, and the second element the version number."
                        (string :tag "Version"))))
 
 (defvar cider-jack-in-lein-plugins nil
-  "List of Leiningen plugins where elements are lists of artifact name and version.")
+  "List of Leiningen plugins to be injected at jack-in.
+Each element is a list of artifact name and version, followed optionally by
+keyword arguments.  The only keyword argument currently accepted is
+`:predicate', which should be given a function that takes the list (name,
+version, and keyword arguments) and returns non-nil to indicate that the
+plugin should actually be injected.")
 (put 'cider-jack-in-lein-plugins 'risky-local-variable t)
 (cider-add-to-alist 'cider-jack-in-lein-plugins
                     "cider/cider-nrepl" (upcase cider-version))
 
+(defun cider-jack-in-lein-plugins ()
+  "Return a normalized list of Leiningen plugins to be injected.
+See `cider-jack-in-lein-plugins' for the format, except that the list
+returned by this function does not include keyword arguments."
+  (mapcar
+   (lambda (spec) (seq-take spec 2))
+   (seq-filter
+    (lambda (spec)
+      (if-let* ((pred (plist-get (seq-drop spec 2) :predicate)))
+          (funcall pred spec)
+        t))
+    cider-jack-in-lein-plugins)))
+
 (defvar cider-jack-in-nrepl-middlewares nil
   "List of Clojure variable names.
-Each of these Clojure variables should hold a vector of nREPL middlewares.")
+Each of these Clojure variables should hold a vector of nREPL middlewares.
+Instead of a string, an element can be a list containing a string followed
+by optional keyword arguments.  The only keyword argument currently
+accepted is `:predicate', which should be given a function that takes the
+list (string and keyword arguments) and returns non-nil to indicate that
+the middlewares should actually be injected.")
 (put 'cider-jack-in-nrepl-middlewares 'risky-local-variable t)
 (add-to-list 'cider-jack-in-nrepl-middlewares "cider.nrepl/cider-middleware")
+
+(defun cider-jack-in-nrepl-middlewares ()
+  "Return a normalized list of middleware variable names.
+See `cider-jack-in-nrepl-middlewares' for the format, except that the list
+returned by this function only contains strings."
+  (mapcar
+   (lambda (spec)
+     (if (listp spec)
+         (car spec)
+       spec))
+   (seq-filter
+    (lambda (spec)
+      (or (not (listp spec))
+          (if-let* ((pred (plist-get (cdr spec) :predicate)))
+              (funcall pred spec)
+            t)))
+    cider-jack-in-nrepl-middlewares)))
 
 (defun cider--list-as-boot-artifact (list)
   "Return a boot artifact string described by the elements of LIST.
